@@ -32,6 +32,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -47,33 +49,56 @@ import com.haisnap.spatialdj.domain.model.PlaybackState
 import com.haisnap.spatialdj.domain.model.Track
 import com.haisnap.spatialdj.ui.console.DjConsoleEvent
 import com.haisnap.spatialdj.ui.console.DjConsoleUiState
+import com.haisnap.spatialdj.ui.console.DjStrings
+import com.haisnap.spatialdj.ui.console.UiLanguage
+import com.haisnap.spatialdj.ui.console.localized
+import com.haisnap.spatialdj.ui.console.strings
 import com.pico.spatial.ui.design.Button
 import com.pico.spatial.ui.design.ButtonDefaults
 import com.pico.spatial.ui.design.PicoTheme
 import com.pico.spatial.ui.design.Slider
 import com.pico.spatial.ui.design.Text
+import com.pico.spatial.ui.foundation.gesture.TargetEntity
+import com.pico.spatial.ui.foundation.gesture.detectSpatialDragGesture
+import com.pico.spatial.ui.foundation.hover.spatialHoverEffect
+import kotlin.math.roundToInt
 
 @Composable
-fun DeviceHeader(state: DjConsoleUiState) {
+fun DeviceHeader(
+    state: DjConsoleUiState,
+    onImportAudio: () -> Unit,
+    onToggleLanguage: () -> Unit,
+) {
+    val strings = state.language.strings()
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Box(
                 modifier = Modifier
                     .size(9.dp)
                     .clip(CircleShape)
                     .background(if (isMasterActive(state)) PicoTheme.colorScheme.error else PicoTheme.colorScheme.passable),
             )
-            Text("HAISNAP  /  SPATIAL VINYL SYSTEM", style = PicoTheme.typography.titleMedium)
+            Text("HAISNAP  /  ${strings.systemName}", style = PicoTheme.typography.titleMedium)
         }
-        Text(
-            if (isMasterActive(state)) "●  ON AIR" else "●  SYSTEM READY",
-            style = PicoTheme.typography.labelMedium,
-            color = if (isMasterActive(state)) PicoTheme.colorScheme.error else PicoTheme.colorScheme.passable,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                state.status.localized(state.language),
+                modifier = Modifier.width(260.dp),
+                style = PicoTheme.typography.labelSmall,
+                color = if (isMasterActive(state)) PicoTheme.colorScheme.error else PicoTheme.colorScheme.passable,
+                maxLines = 1,
+            )
+            Button(onClick = onImportAudio) { Text(strings.importAudio) }
+            Button(onClick = onToggleLanguage) { Text(strings.switchLanguage) }
+        }
     }
 }
 
@@ -83,6 +108,7 @@ fun CrateStrip(
     onEvent: (DjConsoleEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val strings = state.language.strings()
     BoxWithConstraints(modifier.fillMaxWidth()) {
         val compact = maxWidth < ConsoleCalibration.CompactWidthThreshold.dp
         val deckScreenWidth = if (compact) ConsoleCalibration.DeckScreenWidthCompact else ConsoleCalibration.DeckScreenWidth
@@ -97,14 +123,14 @@ fun CrateStrip(
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(end = deckScreenInset),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                DeckDisplay(state.deckA, state.activeDeck == DeckId.A, Modifier.width(deckScreenWidth).fillMaxHeight())
+                DeckDisplay(state.deckA, state.activeDeck == DeckId.A, strings, Modifier.width(deckScreenWidth).fillMaxHeight())
             }
             ConsoleDisplay(modifier = Modifier.width(crateScreenWidth).fillMaxHeight(), contentPadding = 7.dp) {
                 Column(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    state.tracks.chunked(2).forEach { rowTracks ->
+                    state.tracks.takeLast(4).chunked(2).forEach { rowTracks ->
                         Row(
                             modifier = Modifier.weight(1f).fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -112,6 +138,7 @@ fun CrateStrip(
                             rowTracks.forEach { track ->
                                 TrackButton(
                                     track = track,
+                                    strings = strings,
                                     selected = state.selectedTrackId == track.id,
                                     onClick = { onEvent(DjConsoleEvent.LoadTrack(track.id)) },
                                     modifier = Modifier.weight(1f),
@@ -125,14 +152,14 @@ fun CrateStrip(
                 modifier = Modifier.weight(1f).fillMaxHeight().padding(start = deckScreenInset),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                DeckDisplay(state.deckB, state.activeDeck == DeckId.B, Modifier.width(deckScreenWidth).fillMaxHeight())
+                DeckDisplay(state.deckB, state.activeDeck == DeckId.B, strings, Modifier.width(deckScreenWidth).fillMaxHeight())
             }
         }
     }
 }
 
 @Composable
-private fun DeckDisplay(deck: DeckState, selected: Boolean, modifier: Modifier = Modifier) {
+private fun DeckDisplay(deck: DeckState, selected: Boolean, strings: DjStrings, modifier: Modifier = Modifier) {
     val accent = deckAccent(deck.id)
     ConsoleDisplay(modifier = modifier, contentPadding = 12.dp) {
         Row(
@@ -142,17 +169,17 @@ private fun DeckDisplay(deck: DeckState, selected: Boolean, modifier: Modifier =
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    "DECK ${deck.id}  ${if (selected) "ACTIVE" else "STANDBY"}",
+                    "${strings.deck} ${deck.id}  ${if (selected) strings.active else strings.standby}",
                     style = PicoTheme.typography.labelSmall,
                     color = accent,
                 )
                 Text(
-                    deck.track?.title?.uppercase() ?: "LOAD TRACK",
+                    deck.track?.title?.uppercase() ?: strings.loadTrack,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    deck.track?.artist?.uppercase() ?: "NO MEDIA",
+                    deck.track?.artist?.uppercase() ?: strings.noMedia,
                     style = PicoTheme.typography.labelSmall,
                     color = PicoTheme.colorScheme.labelTertiary,
                     maxLines = 1,
@@ -160,8 +187,8 @@ private fun DeckDisplay(deck: DeckState, selected: Boolean, modifier: Modifier =
                 )
             }
             Column(horizontalAlignment = Alignment.End) {
-                Text(deck.track?.bpm?.toString() ?: "---", style = PicoTheme.typography.headlineSmall, color = accent)
-                Text("BPM", style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.labelTertiary)
+                Text(deck.track?.bpm?.takeIf { it > 0 }?.toString() ?: strings.file, style = PicoTheme.typography.headlineSmall, color = accent)
+                Text(if ((deck.track?.bpm ?: 0) > 0) "BPM" else strings.local, style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.labelTertiary)
             }
         }
     }
@@ -171,11 +198,13 @@ private fun DeckDisplay(deck: DeckState, selected: Boolean, modifier: Modifier =
 fun DeckPanel(
     deck: DeckState,
     activeDeck: DeckId,
+    language: UiLanguage,
     onEvent: (DjConsoleEvent) -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
 ) {
     val accent = deckAccent(deck.id)
+    val strings = language.strings()
     BoxWithConstraints(modifier = modifier.fillMaxHeight()) {
         val platterSize = if (compact) {
             minOf(maxWidth * ConsoleCalibration.PlatterWidthFractionCompact, maxHeight * ConsoleCalibration.PlatterHeightFractionCompact)
@@ -188,6 +217,8 @@ fun DeckPanel(
         AnimatedPlatter(
             deck = deck,
             accent = accent,
+            strings = strings,
+            onScratch = { onEvent(DjConsoleEvent.Scratch(deck.id, it)) },
             modifier = Modifier
                 .align(Alignment.Center)
                 .offset(x = platterOffsetX, y = platterOffsetY)
@@ -195,6 +226,7 @@ fun DeckPanel(
         )
         DeckChannelControls(
             deck = deck,
+            strings = strings,
             onEvent = onEvent,
             compact = compact,
             modifier = Modifier
@@ -208,6 +240,7 @@ fun DeckPanel(
         TransportCluster(
             deck = deck,
             activeDeck = activeDeck,
+            strings = strings,
             onEvent = onEvent,
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -222,19 +255,22 @@ fun DeckPanel(
 @Composable
 private fun DeckChannelControls(
     deck: DeckState,
+    strings: DjStrings,
     onEvent: (DjConsoleEvent) -> Unit,
     compact: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val progressColor = deckAccent(deck.id)
+    val progressBackground = PicoTheme.colorScheme.dividerLine
     ConsoleDisplay(modifier = modifier, contentPadding = if (compact) 7.dp else 9.dp) {
         Column(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("DECK ${deck.id}", style = PicoTheme.typography.labelMedium, color = deckAccent(deck.id))
+                Text("${strings.deck} ${deck.id}", style = PicoTheme.typography.labelMedium, color = deckAccent(deck.id))
                 Text(
-                    deck.playbackState.name.uppercase(),
+                    deck.playbackState.localized(strings),
                     style = PicoTheme.typography.labelSmall,
                     color = PicoTheme.colorScheme.labelTertiary,
                 )
@@ -244,7 +280,7 @@ private fun DeckChannelControls(
                 horizontalArrangement = Arrangement.SpaceEvenly,
             ) {
                 VerticalChannelStrip(
-                    label = "PITCH",
+                    label = strings.pitch,
                     value = deck.tempo,
                     valueRange = 0.5f..1.5f,
                     compact = compact,
@@ -252,7 +288,7 @@ private fun DeckChannelControls(
                     modifier = Modifier.weight(1f).fillMaxHeight(),
                 )
                 VerticalChannelStrip(
-                    label = "GAIN",
+                    label = strings.gain,
                     value = deck.volume,
                     valueRange = 0f..1f,
                     compact = compact,
@@ -261,11 +297,15 @@ private fun DeckChannelControls(
                 )
             }
             Text(
-                deck.track?.let { "00:00 / ${formatDuration(it.durationSeconds)}" } ?: "--:-- / --:--",
+                deck.track?.let { "${formatDuration(deck.positionSeconds.toInt())} / ${formatDuration(it.durationSeconds)}" } ?: "--:-- / --:--",
                 style = PicoTheme.typography.labelSmall,
                 color = PicoTheme.colorScheme.labelTertiary,
                 maxLines = 1,
             )
+            Canvas(Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)) {
+                drawRect(progressBackground)
+                drawRect(progressColor, size = androidx.compose.ui.geometry.Size(size.width * deck.progress, size.height))
+            }
         }
     }
 }
@@ -303,8 +343,11 @@ private fun VerticalChannelStrip(
 private fun AnimatedPlatter(
     deck: DeckState,
     accent: Color,
+    strings: DjStrings,
+    onScratch: (Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val transition = rememberInfiniteTransition(label = "deck-${deck.id}-rotation")
     val rotation by transition.animateFloat(
         initialValue = 0f,
@@ -312,7 +355,18 @@ private fun AnimatedPlatter(
         animationSpec = infiniteRepeatable(tween(durationMillis = 2600, easing = LinearEasing)),
         label = "platter-rotation",
     )
-    Box(modifier = modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
+    Box(
+        modifier = modifier
+            .aspectRatio(1f)
+            .clip(CircleShape)
+            .spatialHoverEffect()
+            .pointerInput(deck.id) {
+                detectSpatialDragGesture(context, targetedToEntity = TargetEntity.any()) { drag ->
+                    onScratch(drag.dragAmount.x * 0.006f)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
         Image(
             painter = painterResource(R.drawable.vinyl_platter_neutral),
             contentDescription = null,
@@ -339,11 +393,11 @@ private fun AnimatedPlatter(
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
-                if (deck.playbackState == PlaybackState.Playing) "33⅓" else "CUE",
+                if (deck.playbackState == PlaybackState.Playing) "33⅓" else strings.cue,
                 style = PicoTheme.typography.titleMedium,
                 color = accent,
             )
-            Text("RPM", style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.labelTertiary)
+            Text(strings.rpm, style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.labelTertiary)
         }
     }
 }
@@ -352,6 +406,7 @@ private fun AnimatedPlatter(
 private fun TransportCluster(
     deck: DeckState,
     activeDeck: DeckId,
+    strings: DjStrings,
     onEvent: (DjConsoleEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -366,21 +421,21 @@ private fun TransportCluster(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Button(
-            onClick = { onEvent(DjConsoleEvent.SelectDeck(deck.id)) },
+            onClick = { onEvent(DjConsoleEvent.Cue(deck.id)) },
             colors = ButtonDefaults.buttonColors(
                 containerColor = if (activeDeck == deck.id) accent else PicoTheme.colorScheme.fillTertiary,
                 contentColor = if (activeDeck == deck.id) PicoTheme.colorScheme.fillPrimary else PicoTheme.colorScheme.labelPrimary,
             ),
-        ) { Text("CUE") }
+        ) { Text(strings.cue) }
         Button(
             onClick = { onEvent(DjConsoleEvent.TogglePlayback(deck.id)) },
             enabled = deck.track != null,
             colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = PicoTheme.colorScheme.fillPrimary),
-        ) { Text(if (deck.playbackState == PlaybackState.Playing) "PAUSE" else "PLAY") }
+        ) { Text(if (deck.playbackState == PlaybackState.Playing) strings.pause else strings.play) }
         Button(
             onClick = { onEvent(DjConsoleEvent.Stop(deck.id)) },
             enabled = deck.track != null,
-        ) { Text("STOP") }
+        ) { Text(strings.stop) }
     }
 }
 
@@ -392,30 +447,31 @@ fun MixerPanel(
     compact: Boolean = false,
 ) {
     val deck = if (state.activeDeck == DeckId.A) state.deckA else state.deckB
+    val strings = state.language.strings()
     HardwarePanel(modifier = modifier, compact = compact) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
-                Text("MIXER", style = PicoTheme.typography.headlineSmall)
+                Text(strings.mixer, style = PicoTheme.typography.headlineSmall)
                 Text(
-                    "DECK ${state.activeDeck}  LIVE CHANNEL",
+                    "${strings.deck} ${state.activeDeck}  ${strings.liveChannel}",
                     style = PicoTheme.typography.labelSmall,
                     color = deckAccent(state.activeDeck),
                 )
             }
-            Text("2 CH", style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelTertiary)
+            Text(strings.channelCount, style = PicoTheme.typography.labelMedium, color = PicoTheme.colorScheme.labelTertiary)
         }
         Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
         VuBridge(
-            deckAActive = state.deckA.playbackState == PlaybackState.Playing,
-            deckBActive = state.deckB.playbackState == PlaybackState.Playing,
+            deckALevel = state.deckA.level,
+            deckBLevel = state.deckB.level,
             modifier = Modifier.fillMaxWidth().height(if (compact) 76.dp else 92.dp),
         )
         Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
-        ChannelStrip("LOW", deck.bass, -1f..1f) { onEvent(DjConsoleEvent.SetBass(state.activeDeck, it)) }
-        ChannelStrip("HIGH", deck.treble, -1f..1f) { onEvent(DjConsoleEvent.SetTreble(state.activeDeck, it)) }
-        ChannelStrip("LEVEL", deck.volume, 0f..1f) { onEvent(DjConsoleEvent.SetVolume(state.activeDeck, it)) }
+        ChannelStrip(strings.low, deck.bass, -1f..1f) { onEvent(DjConsoleEvent.SetBass(state.activeDeck, it)) }
+        ChannelStrip(strings.high, deck.treble, -1f..1f) { onEvent(DjConsoleEvent.SetTreble(state.activeDeck, it)) }
+        ChannelStrip(strings.level, deck.volume, 0f..1f) { onEvent(DjConsoleEvent.SetVolume(state.activeDeck, it)) }
         Spacer(Modifier.weight(1f))
-        Text("CROSSFADER", style = PicoTheme.typography.labelMedium)
+        Text(strings.crossfader, style = PicoTheme.typography.labelMedium)
         Slider(
             value = state.crossfader,
             onValueChange = { onEvent(DjConsoleEvent.SetCrossfader(it)) },
@@ -424,7 +480,7 @@ fun MixerPanel(
         )
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text("A ${(state.crossfadeGains.deckA * 100).toInt()}", style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.interaction)
-            Text("CUT", style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.labelTertiary)
+            Text(strings.cut, style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.labelTertiary)
             Text("${(state.crossfadeGains.deckB * 100).toInt()} B", style = PicoTheme.typography.labelSmall, color = PicoTheme.colorScheme.alert)
         }
     }
@@ -432,8 +488,8 @@ fun MixerPanel(
 
 @Composable
 private fun VuBridge(
-    deckAActive: Boolean,
-    deckBActive: Boolean,
+    deckALevel: Float,
+    deckBLevel: Float,
     modifier: Modifier = Modifier,
 ) {
     val background = PicoTheme.colorScheme.fillPrimary
@@ -458,8 +514,8 @@ private fun VuBridge(
                 index >= 8 -> amber
                 else -> green
             }
-            val aOn = index < if (deckAActive) 11 else 2
-            val bOn = index < if (deckBActive) 10 else 2
+            val aOn = index < (deckALevel.coerceIn(0f, 1f) * bars).roundToInt()
+            val bOn = index < (deckBLevel.coerceIn(0f, 1f) * bars).roundToInt()
             drawRect(if (aOn) color else inactive, androidx.compose.ui.geometry.Offset(0f, y), androidx.compose.ui.geometry.Size(channelWidth, barHeight))
             drawRect(if (bOn) color else inactive, androidx.compose.ui.geometry.Offset(channelWidth + 12.dp.toPx(), y), androidx.compose.ui.geometry.Size(channelWidth, barHeight))
         }
@@ -485,6 +541,7 @@ private fun ChannelStrip(
 @Composable
 private fun TrackButton(
     track: Track,
+    strings: DjStrings,
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -499,7 +556,7 @@ private fun TrackButton(
     ) {
         Column(horizontalAlignment = Alignment.Start) {
             Text(track.title, maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Start)
-            Text("${track.bpm} BPM", style = PicoTheme.typography.labelSmall, maxLines = 1)
+            Text(if (track.bpm > 0) "${track.bpm} BPM" else strings.localAudio, style = PicoTheme.typography.labelSmall, maxLines = 1)
         }
     }
 }
