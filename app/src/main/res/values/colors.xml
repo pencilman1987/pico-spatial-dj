@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="dj_carbon">#FF0B0D10</color>
+    <color name="dj_gunmetal">#FF171B21</color>
+    <color name="dj_panel">#FF242A31</color>
+    <color name="dj_panel_light">#FF313843</color>
+    <color name="dj_ink">#FFF6F8FA</color>
+    <color name="dj_steel">#FFDDE3EA</color>
+    <color name="dj_label_secondary">#FF9DA7B2</color>
+    <color name="dj_label_tertiary">#FF65717D</color>
+    <color name="dj_label_quaternary">#FF3F4953</color>
+    <color name="dj_hover">#FF2F3740</color>
+    <color name="dj_pressed">#FF454F59</color>
+    <color name="dj_cue_cyan">#FF38D9FF</color>
+    <color name="dj_signal_amber">#FFFFB547</color>
+    <color name="dj_on_air_red">#FFFF4D5A</color>
+    <color name="dj_meter_green">#FF55E6A5</color>
+    <color name="dj_divider">#FF39424C</color>
+</resources>
