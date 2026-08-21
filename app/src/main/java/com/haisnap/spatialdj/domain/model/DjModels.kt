@@ -2,7 +2,12 @@ package com.haisnap.spatialdj.domain.model
 
 enum class DeckId { A, B }
 
-enum class PlaybackState { Empty, Ready, Playing, Paused }
+enum class PlaybackState { Empty, Loading, Ready, Playing, Paused, Error }
+
+sealed interface TrackSource {
+    data class Demo(val pattern: Int) : TrackSource
+    data class Local(val uri: String) : TrackSource
+}
 
 data class Track(
     val id: String,
@@ -10,6 +15,7 @@ data class Track(
     val artist: String,
     val durationSeconds: Int,
     val bpm: Int,
+    val source: TrackSource = TrackSource.Demo(0),
 )
 
 data class DeckState(
@@ -17,6 +23,8 @@ data class DeckState(
     val track: Track? = null,
     val playbackState: PlaybackState = PlaybackState.Empty,
     val progress: Float = 0f,
+    val positionSeconds: Float = 0f,
+    val level: Float = 0f,
     val volume: Float = 0.82f,
     val tempo: Float = 1f,
     val bass: Float = 0f,
